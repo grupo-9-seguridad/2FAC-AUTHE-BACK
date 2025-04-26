@@ -1,5 +1,10 @@
 package UPS.security2FAC.Controller;
 
+import UPS.security2FAC.Entity.DTO.Login;
+import UPS.security2FAC.Entity.DTO.User;
+import UPS.security2FAC.Entity.DTO.Verificar;
+import UPS.security2FAC.Services.Codigo2FAServiceEmail;
+import UPS.security2FAC.Services.EmailService;
 import UPS.security2FAC.Services.TOTPService;
 import UPS.security2FAC.Services.UsuarioService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -7,10 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 
@@ -22,43 +24,61 @@ public class AuthController {
     private static final Logger log = LoggerFactory.getLogger(AuthController.class);
     private final UsuarioService usuarioService;
     private final TOTPService totpService;
+    private final EmailService emailService;
+    private final Codigo2FAServiceEmail codigo2FAService;
 
     @PostMapping("/registro")
-    public String registrar(@RequestParam String username, @RequestParam String password) {
+    public ResponseEntity<String> registrar(@RequestBody User u) {
 
-        if((username == null || username.isEmpty() ) || (password == null || password.isEmpty()))
-            return "Ingrese el usuario o contrasena";
-        var usuarioOpt = usuarioService.buscar(username);
+        if((u.getUsername() == null || u.getUsername().isEmpty() ) || (u.getPassword() == null || u.getPassword().isEmpty()))
+            ResponseEntity.status(401).body("Ingrese el usuario o contrasena");
+        var usuarioOpt = usuarioService.buscar(u.getUsername());
         if (usuarioOpt.isPresent())
-            return "Usuario ya existe";
+            return ResponseEntity.status(401).body("Usuario ya existe");
+        usuarioService.registrar(u);
 
-        usuarioService.registrar(username, password);
-        return "Usuario registrado";
+        return ResponseEntity.ok("Usuario registrado exitosamente.");
     }
 
     @PostMapping("/login")
-    public ResponseEntity<String> login(@RequestParam String username, @RequestParam String password) {
-        var usuarioOpt = usuarioService.login(username, password);
+    public ResponseEntity<String> login(@RequestBody Login login) {
+        var usuarioOpt = usuarioService.login(login.getUsername(), login.getPassword());
         if (usuarioOpt.isEmpty()) return ResponseEntity.status(401).body("Credenciales inválidas");
 
         var usuario = usuarioOpt.get();
         if (usuario.isBloqueado()) return ResponseEntity.status(403).body("Usuario bloqueado");
 
-        if (!usuario.isTiene2FA()) {
-            String secret = totpService.generarClaveSecreta();
-            usuarioService.activar2FA(usuario, secret);
-            String qr = totpService.procesoDeSetup(username,"AppUPS",  secret);
-            return ResponseEntity.ok("Escanea el código QR con Google Authenticator: " + qr);
-        } else {
-            return ResponseEntity.ok("Ingresa tu código de 2FA generado por tu app");
+        switch (usuario.getTipoAuth()) {
+            case "EMAIL":
+                String codigo = codigo2FAService.generarCodigo(login.getUsername());
+                emailService.enviarCodigo(usuario.getEmail(), codigo);
+                return ResponseEntity.ok("Ingresa el código de verificación enviado a : " + usuarioService.obfuscateEmail(usuario.getEmail()));
+            case "SMS":
+                // Código para autenticación por SMS
+                break;
+            default:
+                // Manejo de casos no contemplados (opcional)
+                break;
         }
+        if (usuario.isGauth())
+        {
+            if (!usuario.isTiene2FA()) {
+                String secret = totpService.generarClaveSecreta();
+                usuarioService.activar2FA(usuario, secret);
+                String qr = totpService.procesoDeSetup(login.getUsername(),"AppUPS",  secret);
+                return ResponseEntity.ok("Escanea el código QR con Google Authenticator: " + qr);
+            } else {
+                return ResponseEntity.ok("Ingresa tu código de 2FA generado por tu app");
+            }
+        }
+        return ResponseEntity.status(401).body("Usuario no encontrado");
     }
 
     @PostMapping("/verificar-2fa")
-    public ResponseEntity<String> verificar(@RequestParam String username, @RequestParam int codigo,
-                                            @RequestParam(required = false) boolean recordar,
+    public ResponseEntity<String> verificar(@RequestBody Verificar data,
                                             HttpServletRequest request) {
-        var usuarioOpt = usuarioService.buscar(username);
+        boolean valido = false;
+        var usuarioOpt = usuarioService.buscar(data.getUsername());
         if (usuarioOpt.isEmpty())
             return ResponseEntity.status(404).body("Usuario no encontrado");
 
@@ -66,16 +86,30 @@ public class AuthController {
         if (usuario.isBloqueado())
             return ResponseEntity.status(403).body("Usuario bloqueado");
 
-        String secretDescifrada = totpService.descifrar(usuario.getSecret2FA());
-        boolean valido = totpService.verificarCodigo(secretDescifrada, codigo);
+        switch (usuario.getTipoAuth()) {
+            case "EMAIL":
+                valido = codigo2FAService.verificarCodigo(data.getUsername(), String.valueOf(data.getCodigo()));
+                break;
+            case "SMS":
+                // Código para autenticación por SMS
+                break;
+            default:
+                // Manejo de casos no contemplados (opcional)
+                break;
+        }
+        if(usuario.isGauth())
+        {
+            String secretDescifrada = totpService.descifrar(usuario.getSecret2FA());
+            valido = totpService.verificarCodigo(secretDescifrada, data.getCodigo());
+        }
 
-        usuarioService.registrarAuditoria(username, valido, request.getRemoteAddr());
+        usuarioService.registrarAuditoria(data.getUsername(), valido, request.getRemoteAddr());
 
         if (valido) {
             usuario.setIntentosFallidos(0);
-            if (recordar) {
+            if (data.isRecordar()) {
                 String token = totpService.generarTokenRecordado();
-                usuarioService.recordarDispositivo(username, token);
+                usuarioService.recordarDispositivo(data.getUsername(), token);
                 return ResponseEntity.ok("Acceso concedido ✅\nToken de dispositivo: " + token);
             }
             return ResponseEntity.ok("Acceso concedido ✅");

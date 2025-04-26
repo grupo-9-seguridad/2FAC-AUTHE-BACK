@@ -2,6 +2,7 @@ package UPS.security2FAC.Services;
 
 
 import UPS.security2FAC.Entity.AuditoriaAcceso;
+import UPS.security2FAC.Entity.DTO.User;
 import UPS.security2FAC.Entity.DispositivoRecordado;
 import UPS.security2FAC.Entity.Usuario;
 import UPS.security2FAC.Repository.AuditoriaAccesoRepository;
@@ -23,10 +24,14 @@ public class UsuarioService {
     private final AuditoriaAccesoRepository auditoriaRepo;
     private final DispositivoRecordadoRepository dispositivoRepo;
 
-    public Usuario registrar(String username, String password) {
+    public Usuario registrar(User usr) {
         Usuario u = Usuario.builder()
-                .username(username)
-                .password(encoder.encode(password))
+                .username(usr.getUsername())
+                .password(encoder.encode(usr.getPassword()))
+                .telefono(usr.getTelefono())
+                .email(usr.getEmail())
+                .gauth(usr.isGauth())
+                .tipoAuth(usr.getTipo2FA())
                 .tiene2FA(false)
                 .bloqueado(false)
                 .intentosFallidos(0)
@@ -73,5 +78,28 @@ public class UsuarioService {
 
     public void registrarIntentos(Usuario usr){
         repo.save(usr);
+    }
+
+    public String obfuscateEmail(String email) {
+        if (email == null || email.isEmpty()) {
+            return email;
+        }
+
+        int atIndex = email.indexOf('@');
+        // Requiere '@' y al menos un carácter antes
+        if (atIndex <= 0) {
+            return email; // Devuelve original si no es un formato válido
+        }
+
+        String localPart = email.substring(0, atIndex);
+        String domainPart = email.substring(atIndex); // Incluye '@'
+
+        // Si la parte local es muy corta (1 o 2 caracteres)
+        if (localPart.length() <= 2) {
+            return localPart.charAt(0) + "***" + domainPart;
+        } else {
+            // Muestra el primer y último carácter de la parte local
+            return localPart.charAt(0) + "***" + localPart.charAt(localPart.length() - 1) + domainPart;
+        }
     }
 }

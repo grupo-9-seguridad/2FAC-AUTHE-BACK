@@ -20,6 +20,10 @@ public class Usuario {
     private Long id;
     private String username;
     private String password;
+    private String email;
+    private String telefono;
+    private boolean gauth;
+    private String tipoAuth;
     private String secret2FA;
     private boolean tiene2FA;
     private int intentosFallidos;
