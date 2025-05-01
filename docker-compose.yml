@@ -12,7 +12,7 @@ services:
       - DB_NAME=2factor_db
     ports:
       - "8080:8080"
-      - "587:587"
+      - "465:465"
     depends_on:
       - postgres
     networks:
