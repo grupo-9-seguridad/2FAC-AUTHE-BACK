@@ -55,6 +55,11 @@ public class UsuarioService {
         return repo.save(u);
     }
 
+    public Usuario updateDobleFactor(Usuario u, Boolean dobleFact) {
+        u.setTiene2FA(dobleFact);
+        return repo.save(u);
+    }
+
     public void registrarAuditoria(String username, boolean exito, String ip) {
         auditoriaRepo.save(AuditoriaAcceso.builder()
                 .username(username)
