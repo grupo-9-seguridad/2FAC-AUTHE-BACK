@@ -12,5 +12,6 @@ import lombok.NoArgsConstructor;
 public class ResponseDTO {
     private String status;
     private String message;
-    private String error;
+    private Boolean tiene2FA;
+    private Boolean hasError;
 }
