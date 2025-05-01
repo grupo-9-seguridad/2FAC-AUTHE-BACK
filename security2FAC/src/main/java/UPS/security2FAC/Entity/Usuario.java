@@ -28,4 +28,5 @@ public class Usuario {
     private boolean tiene2FA;
     private int intentosFallidos;
     private boolean bloqueado;
+    private String idSMS;
 }

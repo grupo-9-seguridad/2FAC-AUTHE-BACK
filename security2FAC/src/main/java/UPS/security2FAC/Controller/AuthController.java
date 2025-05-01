@@ -1,20 +1,17 @@
 package UPS.security2FAC.Controller;
 
 import UPS.security2FAC.Entity.DTO.Login;
+import UPS.security2FAC.Entity.DTO.ResponseDTO;
 import UPS.security2FAC.Entity.DTO.User;
 import UPS.security2FAC.Entity.DTO.Verificar;
-import UPS.security2FAC.Services.Codigo2FAServiceEmail;
-import UPS.security2FAC.Services.EmailService;
-import UPS.security2FAC.Services.TOTPService;
-import UPS.security2FAC.Services.UsuarioService;
+import UPS.security2FAC.Services.*;
+import UPS.security2FAC.Utils.Constantes;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.time.LocalDateTime;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -26,38 +23,50 @@ public class AuthController {
     private final TOTPService totpService;
     private final EmailService emailService;
     private final Codigo2FAServiceEmail codigo2FAService;
+    private final TwoFactorSMS smstwoFactorAuthService;
 
     @PostMapping("/registro")
-    public ResponseEntity<String> registrar(@RequestBody User u) {
+    public ResponseEntity<ResponseDTO> registrar(@RequestBody User u) {
 
         if((u.getUsername() == null || u.getUsername().isEmpty() ) || (u.getPassword() == null || u.getPassword().isEmpty()))
-            ResponseEntity.status(401).body("Ingrese el usuario o contrasena");
+            return ResponseEntity.ok(new ResponseDTO("400", Constantes.VALID_USR_PWD, "Bad Request"));
         var usuarioOpt = usuarioService.buscar(u.getUsername());
         if (usuarioOpt.isPresent())
-            return ResponseEntity.status(401).body("Usuario ya existe");
+            return ResponseEntity.ok(new ResponseDTO("400", Constantes.USUARIO_EXISTE, "Bad Request"));
+        if(!usuarioService.isPasswordValid(u.getPassword()))
+            return ResponseEntity.ok(new ResponseDTO("400", Constantes.PASSWORD_INVALID, "Bad Request"));
+
         usuarioService.registrar(u);
 
-        return ResponseEntity.ok("Usuario registrado exitosamente.");
+
+        return ResponseEntity.ok(new ResponseDTO("201",Constantes.USUARIO_OK, "0"));
     }
 
     @PostMapping("/login")
-    public ResponseEntity<String> login(@RequestBody Login login) {
+    public ResponseEntity<ResponseDTO> login(@RequestBody Login login) throws Exception {
         var usuarioOpt = usuarioService.login(login.getUsername(), login.getPassword());
-        if (usuarioOpt.isEmpty()) return ResponseEntity.status(401).body("Credenciales inválidas");
+        if (usuarioOpt.isEmpty())
+            return ResponseEntity.ok(new ResponseDTO("400", Constantes.CREDENCIALES_INVALIDAS, "Bad Request"));
 
         var usuario = usuarioOpt.get();
-        if (usuario.isBloqueado()) return ResponseEntity.status(403).body("Usuario bloqueado");
+        if (usuario.isBloqueado())
+            return ResponseEntity.ok(new ResponseDTO("400", Constantes.USUARIO_BLOQUEADO, "Bad Request"));
 
         switch (usuario.getTipoAuth()) {
             case "EMAIL":
                 String codigo = codigo2FAService.generarCodigo(login.getUsername());
                 emailService.enviarCodigo(usuario.getEmail(), codigo);
-                return ResponseEntity.ok("Ingresa el código de verificación enviado a : " + usuarioService.obfuscateEmail(usuario.getEmail()));
+                return ResponseEntity.ok(new ResponseDTO("200", Constantes.EMAIL_OK + usuarioService.obfuscateEmail(usuario.getEmail()), "Solicitud procesada con éxito"));
             case "SMS":
-                // Código para autenticación por SMS
-                break;
+                String idSMS = smstwoFactorAuthService.sendSMS(usuario.getTelefono());
+                if (!idSMS.isEmpty())
+                {
+                    usuarioService.guardarIDSms(usuario, idSMS);
+                    return ResponseEntity.ok(new ResponseDTO("200", Constantes.SMS_OK, "Solicitud procesada con éxito"));
+                }
+                else
+                    return ResponseEntity.ok(new ResponseDTO("400", Constantes.EMAIL_ERROR, "Bad Request"));
             default:
-                // Manejo de casos no contemplados (opcional)
                 break;
         }
         if (usuario.isGauth())
@@ -66,41 +75,40 @@ public class AuthController {
                 String secret = totpService.generarClaveSecreta();
                 usuarioService.activar2FA(usuario, secret);
                 String qr = totpService.procesoDeSetup(login.getUsername(),"AppUPS",  secret);
-                return ResponseEntity.ok("Escanea el código QR con Google Authenticator: " + qr);
+                return ResponseEntity.ok(new ResponseDTO("200", Constantes.AUTH_OK + qr, "Solicitud procesada con éxito"));
             } else {
-                return ResponseEntity.ok("Ingresa tu código de 2FA generado por tu app");
+                return ResponseEntity.ok(new ResponseDTO("200", Constantes.AUTH_OK_REG, "Solicitud procesada con éxito"));
             }
         }
-        return ResponseEntity.status(401).body("Usuario no encontrado");
+        return ResponseEntity.ok(new ResponseDTO("400", Constantes.USR_NO_ENCONTRADO, "Bad Request"));
     }
 
     @PostMapping("/verificar-2fa")
-    public ResponseEntity<String> verificar(@RequestBody Verificar data,
-                                            HttpServletRequest request) {
+    public ResponseEntity<ResponseDTO> verificar(@RequestBody Verificar data,
+                                            HttpServletRequest request) throws Exception {
         boolean valido = false;
         var usuarioOpt = usuarioService.buscar(data.getUsername());
         if (usuarioOpt.isEmpty())
-            return ResponseEntity.status(404).body("Usuario no encontrado");
+            return ResponseEntity.ok(new ResponseDTO("400", Constantes.USR_NO_ENCONTRADO, "Bad Request"));
 
         var usuario = usuarioOpt.get();
         if (usuario.isBloqueado())
-            return ResponseEntity.status(403).body("Usuario bloqueado");
+            return ResponseEntity.ok(new ResponseDTO("400", Constantes.USR_BLOQUEADO, "Bad Request"));
 
         switch (usuario.getTipoAuth()) {
             case "EMAIL":
-                valido = codigo2FAService.verificarCodigo(data.getUsername(), String.valueOf(data.getCodigo()));
+                valido = codigo2FAService.verificarCodigo(data.getUsername(), data.getCodigo());
                 break;
             case "SMS":
-                // Código para autenticación por SMS
+                valido = Boolean.parseBoolean(smstwoFactorAuthService.verifyOtp(usuario.getIdSMS(),data.getCodigo()));
                 break;
             default:
-                // Manejo de casos no contemplados (opcional)
                 break;
         }
         if(usuario.isGauth())
         {
             String secretDescifrada = totpService.descifrar(usuario.getSecret2FA());
-            valido = totpService.verificarCodigo(secretDescifrada, data.getCodigo());
+            valido = totpService.verificarCodigo(secretDescifrada, Integer.parseInt(data.getCodigo()));
         }
 
         usuarioService.registrarAuditoria(data.getUsername(), valido, request.getRemoteAddr());
@@ -110,16 +118,16 @@ public class AuthController {
             if (data.isRecordar()) {
                 String token = totpService.generarTokenRecordado();
                 usuarioService.recordarDispositivo(data.getUsername(), token);
-                return ResponseEntity.ok("Acceso concedido ✅\nToken de dispositivo: " + token);
+                return ResponseEntity.ok(new ResponseDTO("200", Constantes.ACCESO_OK + token, "Solicitud procesada con éxito"));
             }
-            return ResponseEntity.ok("Acceso concedido ✅");
+            return ResponseEntity.ok(new ResponseDTO("200", Constantes.ACCESO_OK_DOS, "Solicitud procesada con éxito"));
         } else {
             usuario.setIntentosFallidos(usuario.getIntentosFallidos() + 1);
             if (usuario.getIntentosFallidos() >= 5) {
                 usuario.setBloqueado(true);
             }
             usuarioService.registrarIntentos(usuario);
-            return ResponseEntity.status(401).body("Código inválido ❌");
+            return ResponseEntity.ok(new ResponseDTO("200", Constantes.ACCESO_ERROR, "Solicitud procesada con éxito"));
         }
     }
 }

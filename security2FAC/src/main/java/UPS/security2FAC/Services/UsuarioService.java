@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -47,6 +48,10 @@ public class UsuarioService {
     public Usuario activar2FA(Usuario u, String secret) {
         u.setSecret2FA(totpService.cifrar(secret));
         u.setTiene2FA(true);
+        return repo.save(u);
+    }
+    public Usuario guardarIDSms(Usuario u, String secret) {
+        u.setIdSMS(secret);
         return repo.save(u);
     }
 
@@ -84,22 +89,34 @@ public class UsuarioService {
         if (email == null || email.isEmpty()) {
             return email;
         }
-
         int atIndex = email.indexOf('@');
-        // Requiere '@' y al menos un carácter antes
         if (atIndex <= 0) {
-            return email; // Devuelve original si no es un formato válido
+            return email;
         }
-
         String localPart = email.substring(0, atIndex);
-        String domainPart = email.substring(atIndex); // Incluye '@'
-
-        // Si la parte local es muy corta (1 o 2 caracteres)
+        String domainPart = email.substring(atIndex);
         if (localPart.length() <= 2) {
             return localPart.charAt(0) + "***" + domainPart;
         } else {
-            // Muestra el primer y último carácter de la parte local
             return localPart.charAt(0) + "***" + localPart.charAt(localPart.length() - 1) + domainPart;
         }
+    }
+
+    private static final Pattern PASSWORD_PATTERN = Pattern.compile(
+            "^(?=.*[0-9])" +           // al menos un dígito
+                    "(?=.*[a-z])" +            // al menos una minúscula
+                    "(?=.*[A-Z])" +            // al menos una mayúscula
+                    "(?=.*[@#$%^&+=!])" +      // al menos un caracter especial
+                    "(?=\\S+$)" +              // sin espacios
+                    ".{8,}$"                   // mínimo 8 caracteres
+    );
+
+    public boolean isPasswordValid(String password) {
+        if (password == null) return false;
+        return PASSWORD_PATTERN.matcher(password).matches();
+    }
+
+    public static String getPolicyDescription() {
+        return "";
     }
 }

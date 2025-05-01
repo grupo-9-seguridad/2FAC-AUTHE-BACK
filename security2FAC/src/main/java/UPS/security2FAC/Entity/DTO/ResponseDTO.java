@@ -1,6 +1,5 @@
 package UPS.security2FAC.Entity.DTO;
 
-
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -10,8 +9,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Verificar {
-    private String username;
-    private String codigo;
-    private boolean recordar;
+public class ResponseDTO {
+    private String status;
+    private String message;
+    private String error;
 }
