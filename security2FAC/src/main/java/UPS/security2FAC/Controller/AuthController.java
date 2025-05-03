@@ -64,7 +64,7 @@ public class AuthController {
         if (usuario.isBloqueado())
             return ResponseEntity.ok(new ResponseDTO("400", Constantes.USUARIO_BLOQUEADO,usuario.isTiene2FA(), true));
 
-        if((usuario.getTipoAuth() == null || usuario.getTipoAuth().isEmpty()) || !usuario.isGauth())
+        if((usuario.getTipoAuth() == null || usuario.getTipoAuth().isEmpty()) || usuario.isGauth())
             return ResponseEntity.ok(new ResponseDTO("200", Constantes.DOBLE_FACT, usuario.isTiene2FA(), false));
 
         if (!usuario.isTiene2FA())
