@@ -10,6 +10,7 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=2factor_db
+      - SECRET=${SECRET}
     ports:
       - "8080:8080"
       - "465:465"

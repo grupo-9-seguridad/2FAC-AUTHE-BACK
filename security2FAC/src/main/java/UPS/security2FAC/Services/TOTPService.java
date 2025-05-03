@@ -4,9 +4,9 @@ package UPS.security2FAC.Services;
 import com.warrenstrange.googleauth.GoogleAuthenticator;
 import com.warrenstrange.googleauth.GoogleAuthenticatorKey;
 import com.warrenstrange.googleauth.GoogleAuthenticatorQRGenerator;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.Cipher;
@@ -17,12 +17,15 @@ import java.util.UUID;
 
 
 @Service
-@RequiredArgsConstructor
 public class TOTPService {
 
     private static final Logger log = LoggerFactory.getLogger(TOTPService.class);
     private final GoogleAuthenticator gAuth = new GoogleAuthenticator();
-    private static final String CLAVE_SECRETA = "0123456789abcdef0123456789abcdef";
+    private final String claveSecreta;
+
+    public TOTPService(@Value("${password.salt}") String claveSecreta) {
+        this.claveSecreta = claveSecreta;
+    }
 
     public String generarClaveSecreta() {
         return gAuth.createCredentials().getKey();
@@ -45,7 +48,7 @@ public class TOTPService {
     public String cifrar(String texto) {
         try {
             Cipher cipher = Cipher.getInstance("AES");
-            SecretKeySpec key = new SecretKeySpec(CLAVE_SECRETA.getBytes(StandardCharsets.UTF_8), "AES");
+            SecretKeySpec key = new SecretKeySpec(claveSecreta.getBytes(StandardCharsets.UTF_8), "AES");
             cipher.init(Cipher.ENCRYPT_MODE, key);
             return Base64.getEncoder().encodeToString(cipher.doFinal(texto.getBytes()));
         } catch (Exception e) {
@@ -56,7 +59,7 @@ public class TOTPService {
     public String descifrar(String textoCifrado) {
         try {
             Cipher cipher = Cipher.getInstance("AES");
-            SecretKeySpec key = new SecretKeySpec(CLAVE_SECRETA.getBytes(StandardCharsets.UTF_8), "AES");
+            SecretKeySpec key = new SecretKeySpec(claveSecreta.getBytes(StandardCharsets.UTF_8), "AES");
             cipher.init(Cipher.DECRYPT_MODE, key);
             return new String(cipher.doFinal(Base64.getDecoder().decode(textoCifrado)));
         } catch (Exception e) {
@@ -67,4 +70,5 @@ public class TOTPService {
     public String generarTokenRecordado() {
         return UUID.randomUUID().toString();
     }
+
 }
