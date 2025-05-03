@@ -13,7 +13,7 @@ public class Constantes {
     public static final String EMAIL_ERROR = " No se pudo enviar el sms, verificar con su administrador.";
     public static final String AUTH_OK = "Escanea el código QR con Google Authenticator: ";
     public static final String AUTH_OK_REG = "Ingresa tu código de 2FA generado por tu app";
-    public static final String USR_NO_ENCONTRADO = "Usuario no encontrado";
+    public static final String USR_NO_ENCONTRADO = "Usuario o contraseña incorrectos";
     public static final String USR_BLOQUEADO = "Usuario bloqueado";
     public static final String ACCESO_OK = "Acceso concedido ✅\nToken de dispositivo: ";
     public static final String ACCESO_OK_DOS = "Acceso concedido ✅";

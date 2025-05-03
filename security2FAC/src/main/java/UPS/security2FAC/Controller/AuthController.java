@@ -58,7 +58,7 @@ public class AuthController {
     public ResponseEntity<ResponseDTO> login(@RequestBody Login login) throws Exception {
         var usuarioOpt = usuarioService.login(login.getUsername(), login.getPassword());
         if (usuarioOpt.isEmpty())
-            return ResponseEntity.ok(new ResponseDTO("400", Constantes.CREDENCIALES_INVALIDAS,false, true));
+            return ResponseEntity.ok(new ResponseDTO("400", Constantes.USR_NO_ENCONTRADO,false, true));
 
         var usuario = usuarioOpt.get();
         if (usuario.isBloqueado())
@@ -120,14 +120,14 @@ public class AuthController {
                 String codigo = codigo2FAService.generarCodigo(login.getUsername());
                 emailService.enviarCodigo(usuario.getEmail(), codigo);
                 usuarioService.updateDobleFactor(usuario, true);
-                return ResponseEntity.ok(new ResponseDTO("200", Constantes.EMAIL_OK + usuarioService.obfuscateEmail(usuario.getEmail()), usuario.isTiene2FA(), false));
+                return ResponseEntity.ok(new ResponseDTO("200", "email", usuario.isTiene2FA(), false));
             case "SMS":
                 String idSMS = smstwoFactorAuthService.sendSMS(usuario.getTelefono());
                 if (!idSMS.isEmpty())
                 {
                     usuarioService.guardarIDSms(usuario, idSMS);
                     usuarioService.updateDobleFactor(usuario, true);
-                    return ResponseEntity.ok(new ResponseDTO("200", Constantes.SMS_OK, usuario.isTiene2FA(), false));
+                    return ResponseEntity.ok(new ResponseDTO("200", "sms", usuario.isTiene2FA(), false));
                 }
                 else
                 {
@@ -137,12 +137,14 @@ public class AuthController {
             default:
                 break;
         }
-        if (usuario.isGauth())
+        if (usuario.isGauth() && null == usuario.getSecret2FA())
         {
             String secret = totpService.generarClaveSecreta();
             usuarioService.activar2FA(usuario, secret);
             String qr = totpService.procesoDeSetup(login.getUsername(),"Seguridad UPS",  secret);
             return ResponseEntity.ok(new ResponseDTO("200", qr, usuario.isTiene2FA(), false));
+        } else if (usuario.isGauth() && !usuario.getSecret2FA().isEmpty()) {
+            return ResponseEntity.ok(new ResponseDTO("200", "app", usuario.isTiene2FA(), false));
         }
         return ResponseEntity.ok(new ResponseDTO("400", Constantes.AUTH_NO_EN, usuario.isTiene2FA(),  true));
     }
