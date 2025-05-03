@@ -20,11 +20,13 @@ import java.util.UUID;
 public class TOTPService {
 
     private static final Logger log = LoggerFactory.getLogger(TOTPService.class);
-    private final GoogleAuthenticator gAuth = new GoogleAuthenticator();
+    private final GoogleAuthenticator gAuth;
     private final String claveSecreta;
 
-    public TOTPService(@Value("${password.salt}") String claveSecreta) {
+    public TOTPService(@Value("${password.salt}") String claveSecreta,
+                       GoogleAuthenticator googleAuthenticator) {
         this.claveSecreta = claveSecreta;
+        this.gAuth = googleAuthenticator;
     }
 
     public String generarClaveSecreta() {
